@@ -1,0 +1,123 @@
+
+
+MATLAB CODE:
+
+Preprocessing
+function img = preprocessXray(img)
+    if size(img, 3) == 3
+        img = rgb2gray(img);
+    end
+    img = imresize(img, [224 224]);
+    img = im2single(img);
+end
+Features extraction 
+function features = extractPneumoniaFeatures(img)
+   img = preprocessXray(img);
+    I = double(img);
+    hogFeatures = manualHOG(I);
+    intensityFeatures = [ ...
+        mean(I(:)), ...
+        std(I(:)), ...
+        var(I(:)), ...
+        min(I(:)), ...
+        max(I(:)), ...
+        median(I(:)), ...
+        prctile(I(:), 10), ...
+        prctile(I(:), 25), ...
+        prctile(I(:), 75), ...
+        prctile(I(:), 90)];
+    [Gx, Gy] = gradient(I);
+    Gmag = hypot(Gx, Gy);
+ localVar = stdfilt(I, true(3));
+    textureFeatures = [ ...
+        mean(localVar(:)), ...
+        std(localVar(:)), ...
+        mean(abs(Gx(:))), ...
+        mean(abs(Gy(:))), ...
+        std(Gmag(:)), ...
+        mean(Gmag(:))];
+    BW = I > graythresh(I);
+   areaValue = nnz(BW);
+    perimeterValue = sum(bwperim(BW), "all");
+    [rows, cols] = find(BW);
+    if isempty(rows)
+        heightValue = 0;
+        widthValue = 0;
+    else
+        heightValue = max(rows) - min(rows) + 1;
+        widthValue = max(cols) - min(cols) + 1;
+    end
+    if widthValue > 0
+        aspectRatio = heightValue / widthValue;
+    else
+        aspectRatio = 0;
+    end
+    equivalentDiameter = sqrt(4 * areaValue / pi);
+  shapeFeatures = [ …     areaValue, perimeterValue, ...
+        heightValue, widthValue, ...
+        aspectRatio, equivalentDiameter];
+        features = [hogFeatures, intensityFeatures, ...
+                textureFeatures, shapeFeatures];
+end
+
+Manual HOG Feature Extraction
+function hog = manualHOG(I)
+  I = imresize(I, [224 224]);
+    [Gx, Gy] = gradient(I);
+ magnitude = hypot(Gx, Gy);
+    angle = mod(atan2d(Gy, Gx), 180);
+    cellSize = 8;
+    numBins = 9;
+    hog = zeros(28, 28, numBins);
+  for r = 1:28
+        for c = 1:28
+     rr = (r-1)*cellSize + (1:cellSize);
+            cc = (c-1)*cellSize + (1:cellSize);
+    magCell = magnitude(rr, cc);
+            angCell = angle(rr, cc);
+    binIndex = floor(angCell / 20) + 1;
+           binIndex = min(binIndex, numBins);
+U  for b = 1:numBins
+                hog(r,c,b) = sum( ...
+                    magCell(binIndex == b), "all");
+            end
+        end
+    end
+  hog = hog(:)';
+end
+Feature Fusion and Standardization
+mu = mean(XTrain, 1);
+sigma = std(XTrain, 0, 1);
+sigma(sigma == 0) = 1;
+XTrainNorm = (XTrain - mu) ./ sigma;
+XValNorm   = (XVal - mu) ./ sigma;
+XTestNorm  = (XTest - mu) ./ sigma;
+RBF-SVM Training Using SMO
+G = sum(XTrainNorm.^2, 2);
+D = G + G' - 2*(XTrainNorm*XTrainNorm');
+D(D < 0) = 0;
+distanceValues = D(D > 0);
+medianDistance = median(distanceValues);
+gamma = 1/(2*medianDistance);
+KTrain = exp(-gamma*D);
+model = trainRBFSVM(KTrain, YTrainSVM, 1, 0.001, 5);
+ResNet-18 Transfer Learning
+net = resnet18;
+lgraph = layerGraph(net);
+newFC = fullyConnectedLayer(2, ...
+    "Name", "fc1000_new", ...
+    "WeightLearnRateFactor", 10, ...
+    "BiasLearnRateFactor", 10);
+newClassLayer = classificationLayer( ...
+    "Name", "new_classoutput", ...
+    "Classes", ["NORMAL", "PNEUMONIA"]);
+lgraph = replaceLayer(lgraph, "fc1000", newFC);
+lgraph = replaceLayer(lgraph, ... "ClassificationLayer_predictions", newClassLayer);
+
+Testing and Performance Evaluation
+YPred = classify(netTransferFast, augTest);
+YTrue = imdsTest.Labels;
+CM = confusionmat(YTrue, YPred);
+accuracy = sum(YPred == YTrue) / numel(YTrue) * 100;
+disp(CM);
+fprintf("Accuracy: %.2f%%\n", accuracy);
