@@ -1,4 +1,4 @@
-Comparative Evaluation of RBF-SVM and ResNet-18 for Chest X-ray Image Classification
+Comparative Performance Evaluation of Machine Learning and Deep Learning Approaches for Pneumonia Detection Using Chest X-Ray Images
 
 Project Overview
 
